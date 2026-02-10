@@ -17,9 +17,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set lowercase repository owner
-        id: owner
-        run: echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Set lowercase values
+        id: vars
+        run: |
+          echo "actor_lc=${GITHUB_ACTOR,,}" >> "$GITHUB_OUTPUT"
+          echo "repo_lc=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -34,4 +36,4 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ steps.owner.outputs.owner_lc }}/nitter:latest
+            ghcr.io/${{ steps.vars.outputs.actor_lc }}/nitter:latest
