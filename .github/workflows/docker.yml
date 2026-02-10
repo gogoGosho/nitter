@@ -17,22 +17,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 1: lowercase everything
-      - name: Set lowercase repo name
+      # Step 1: Force lowercase
+      - name: Lowercase repo
         id: vars
         run: |
           echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "ACTOR_LC=${GITHUB_ACTOR,,}" >> "$GITHUB_OUTPUT"
 
       # Step 2: Log in to GHCR
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ steps.vars.outputs.ACTOR_LC }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Step 3: Build and push
-      - name: Build and push Docker image
+      # Step 3: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
