@@ -17,7 +17,7 @@ let
   unReplace = "$1<a href=\"/$2\">@$2</a>"
 
   htRegex = re"(^|[^\w-_./?])([#$]|＃)([\w_]+)"
-  htReplace = "$1<a href=\"/search?q=%23$3\">$2$3</a>"
+  htReplace = "$1<a href=\"/search?f=tweets&q=%23$3\">$2$3</a>"
 
 type
   ReplaceSliceKind = enum
@@ -207,7 +207,7 @@ proc replacedWith(runes: seq[Rune]; repls: openArray[ReplaceSlice];
       let
         name = $runes[rep.slice.a.succ .. rep.slice.b]
         symbol = $runes[rep.slice.a]
-      result.add a(symbol & name, href = "/search?q=%23" & name)
+      result.add a(symbol & name, href = "/search?f=tweets&q=%23" & name)
     of rkMention:
       result.add a($runes[rep.slice], href = rep.url, title = rep.display)
     of rkUrl:
@@ -333,7 +333,7 @@ proc expandNoteTweetEntities*(tweet: Tweet; js: JsonNode) =
 
 proc extractGalleryPhoto*(t: Tweet): GalleryPhoto =
   let url =
-    if t.photos.len > 0: t.photos[0]
+    if t.photos.len > 0: t.photos[0].url
     elif t.video.isSome: get(t.video).thumb
     elif t.gif.isSome: get(t.gif).thumb
     elif t.card.isSome: get(t.card).image
