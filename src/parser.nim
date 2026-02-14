@@ -283,7 +283,8 @@ proc parseCard(js: JsonNode; urls: JsonNode): Card =
      result.url.len == 0 or result.url.startsWith("card://"):
     result.url = getPicUrl(result.image)
 
-proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
+proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull();
+                replyId: int64 = 0): Tweet =
   if js.isNull: return
 
   let time =
@@ -306,6 +307,9 @@ proc parseTweet(js: JsonNode; jsCard: JsonNode = newJNull()): Tweet =
       views: js{"views_count"}.getInt
     )
   )
+
+  if result.replyId == 0:
+    result.replyId = replyId
 
   # fix for pinned threads
   if result.hasThread and result.threadId == 0:
@@ -402,12 +406,17 @@ proc parseGraphTweet(js: JsonNode): Tweet =
           "binding_values": %bindingObj
         }
 
-  result = parseTweet(js{"legacy"}, jsCard)
+  var replyId = 0
+  with restId, js{"reply_to_results", "rest_id"}:
+    replyId = restId.getId
+
+  result = parseTweet(js{"legacy"}, jsCard, replyId)
   result.id = js{"rest_id"}.getId
   result.user = parseGraphUser(js{"core"})
 
-  if result.replyId == 0:
-    result.replyId = js{"reply_to_results", "rest_id"}.getId
+  if result.reply.len == 0:
+    with replyTo, js{"reply_to_user_results", "result", "core", "screen_name"}:
+      result.reply = @[replyTo.getStr]
 
   with count, js{"views", "count"}:
     result.stats.views = count.getStr("0").parseInt
@@ -417,21 +426,21 @@ proc parseGraphTweet(js: JsonNode): Tweet =
 
   parseMediaEntities(js, result)
 
-  if result.quote.isSome:
-    result.quote = some(parseGraphTweet(js{"quoted_status_result", "result"}))
-
-  with quoted, js{"quotedPostResults", "result"}:
+  with quoted, js{"quoted_status_result", "result"}:
     result.quote = some(parseGraphTweet(quoted))
+
+  with quoted, js{"quotedPostResults"}:
+    if "result" in quoted:
+      result.quote = some(parseGraphTweet(quoted{"result"}))
+    else:
+      result.quote = some Tweet(id: js{"legacy", "quoted_status_id_str"}.getId)
 
 proc parseGraphThread(js: JsonNode): tuple[thread: Chain; self: bool] =
   for t in ? js{"content", "items"}:
     let entryId = t.getEntryId
-    if "cursor-showmore" in entryId:
-      let cursor = t{"item", "content", "value"}
-      result.thread.cursor = cursor.getStr
-      result.thread.hasMore = true
-    elif "tweet" in entryId and "promoted" notin entryId:
-      with tweet, t.getTweetResult("item"):
+    if "tweet-" in entryId and "promoted" notin entryId:
+      let tweet = t.getTweetResult("item")
+      if not tweet.isNull:
         result.thread.content.add parseGraphTweet(tweet)
 
         let tweetDisplayType = select(
@@ -440,6 +449,12 @@ proc parseGraphThread(js: JsonNode): tuple[thread: Chain; self: bool] =
         )
         if tweetDisplayType.getStr == "SelfThread":
           result.self = true
+      else:
+        result.thread.content.add Tweet(id: entryId.getId)
+    elif "cursor-showmore" in entryId:
+      let cursor = t{"item", "content", "value"}
+      result.thread.cursor = cursor.getStr
+      result.thread.hasMore = true
 
 proc parseGraphTweetResult*(js: JsonNode): Tweet =
   with tweet, js{"data", "tweet_result", "result"}:
@@ -460,7 +475,7 @@ proc parseGraphConversation*(js: JsonNode; tweetId: string): Conversation =
     if i.getTypeName == "TimelineAddEntries":
       for e in i{"entries"}:
         let entryId = e.getEntryId
-        if entryId.startsWith("tweet"):
+        if entryId.startsWith("tweet-"):
           let tweetResult = getTweetResult(e)
           if tweetResult.notNull:
             let tweet = parseGraphTweet(tweetResult)
@@ -468,10 +483,12 @@ proc parseGraphConversation*(js: JsonNode; tweetId: string): Conversation =
             if not tweet.available:
               tweet.id = entryId.getId
 
-            if $tweet.id == tweetId:
+            if entryId.endsWith(tweetId):
               result.tweet = tweet
             else:
               result.before.content.add tweet
+          elif not entryId.endsWith(tweetId):
+            result.before.content.add Tweet(id: entryId.getId)
         elif entryId.startsWith("conversationthread"):
           let (thread, self) = parseGraphThread(e)
           if self:
