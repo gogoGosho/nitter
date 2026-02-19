@@ -222,6 +222,8 @@ type
     gif*: Option[Gif]
     video*: Option[Video]
     photos*: seq[Photo]
+    history*: seq[int64]
+    note*: string
 
   Tweets* = seq[Tweet]
 
@@ -241,6 +243,10 @@ type
     before*: Chain
     after*: Chain
     replies*: Result[Chain]
+
+  EditHistory* = object
+    latest*: Tweet
+    history*: Tweets
 
   Timeline* = Result[Tweets]
 
